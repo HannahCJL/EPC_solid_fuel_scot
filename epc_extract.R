@@ -3,13 +3,18 @@
 
 # 1/4/25
 
-# File paths
+# File paths ----
 
 uprn_fp <- "P:/08092_ScotGov_AirQuality/Data/D1_2_PM_WorkDayTask1/DomesticBurningStats/UPRN Data/Data/"
 epc_fp <- "P:/08092_ScotGov_AirQuality/Data/D1_2_PM_WorkDayTask1/DomesticBurningStats/D_EPC_data_2015Q1-2024Q4/"
 wd <- "P:/08092_ScotGov_AirQuality/Data/D1_2_PM_WorkDayTask1/ImprovingSpatialDomesticSF/Data"
 
+# Packages ----
+
 pacman::p_load("dplyr","stringr","ggplot2","readr","DT","tidyr")
+
+
+# Exploratory analysis  ----
 
 epc_24q4 <- read_csv(str_c(epc_fp, "2024Q4.csv"))
 cols_epc <- data.frame(colnames(epc_24q4))
@@ -67,24 +72,20 @@ epc_sfb <- epc_24q4 %>%
 
 # unique mainheat desc, main fuel, hotwater?
 # wood, fuel, coal, anthracite
-# mutate column instead of filter
 
-# cant just remove all commas for hotwater ----
+# cant just remove all commas for hotwater 
 # need to check documentation for data
 
-epc_24q4 <- read_csv(str_c(epc_fp, "2024Q3.csv"))
+# Clean EPC data ----
 
 epc_15q1 <- read_csv(str_c(epc_fp, "2015Q1.csv"))
-unique(epc_15q1$MAINHEAT_DESCRIPTION)
-unique(epc_15q1$HOTWATER_DESCRIPTION)
 
 # Split the entries by '|' and ',', unnest, and extract unique values
 unique_mainheat_descriptions <- epc_15q1 %>%
-  mutate(MAINHEAT_DESCRIPTION = str_split(MAINHEAT_DESCRIPTION, " \\| ")) %>%
-  # mutate(MAINHEAT_DESCRIPTION = str_split(MAINHEAT_DESCRIPTION, " \\| |, ")) %>% # commas and |
-  unnest(MAINHEAT_DESCRIPTION) %>%
-  distinct(MAINHEAT_DESCRIPTION)
-
+  rename_all(tolower) %>%
+  mutate(mainheat_description = str_split(mainheat_description, " \\| ")) %>%
+  unnest(mainheat_description) %>%
+  distinct(mainheat_description)
 
 # select wood anthracite fuel coal
 
@@ -98,8 +99,7 @@ epc_clean <- function(yr, q) {
     # Separate mainheat, hotwater columns where multiple heat sources are present 
     separate_rows(mainheat_description, sep = "\\|") %>%
     separate_rows(hotwater_description, sep = "\\|") 
-    # Check for new unique main heat descriptions
-  
+    
   # Extract unique main heat descriptions from clean_file
   unique_clean_file_descriptions <- clean_file %>%
     distinct(mainheat_description) %>%
@@ -120,3 +120,18 @@ epc_clean <- function(yr, q) {
 
 q <- c(1:4)
 yr <- c(2015:2024)
+
+# Initialize an empty list to store results
+all_cleaned_files <- list()
+
+# Loop over years and quarters
+for (year in 2015:2024) {
+  for (quarter in 1:4) {
+    cleaned_file <- epc_clean(year, quarter)
+    all_cleaned_files[[str_c(year, "Q", quarter)]] <- cleaned_file
+  }
+}
+
+# Combine all cleaned files into one data frame
+final_cleaned_file <- bind_rows(all_cleaned_files)
+
