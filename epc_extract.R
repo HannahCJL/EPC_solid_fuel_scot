@@ -49,7 +49,6 @@ sfb_heat <- c("coal", "wood logs", "smokeless fuel", "wood chips",  "wood pellet
 sfb_hw <- c("Solid fuel boiler/circulator",
                   "Solid fuel range cooker")
 
-  
 epc_w <- epc_24q4 %>%
   select(OSG_REFERENCE_NUMBER, POSTCODE, MAINHEAT_DESCRIPTION, HOTWATER_DESCRIPTION, NUMBER_OPEN_FIREPLACES, MAIN_FUEL) %>%
   filter(str_detect(HOTWATER_DESCRIPTION, paste(sfb_w, collapse = "|")))
@@ -64,8 +63,6 @@ epc_sfb <- epc_24q4 %>%
 # is solid fuel their main fuel?
 # percentage of solid fuel as main fuel users vs not etc?
 
-# check if need to load all epc's
-
 # load in all EPCs from past 10 years
 # clean and check for further solid fuel types
 # extract for matches like wood, show warning that new types are being added
@@ -73,11 +70,9 @@ epc_sfb <- epc_24q4 %>%
 # unique mainheat desc, main fuel, hotwater?
 # wood, fuel, coal, anthracite
 
-# cant just remove all commas for hotwater 
-# need to check documentation for data
-
 # Clean EPC data ----
 
+# Use 2015 Q1 data for baseline mainheat descriptions
 epc_15q1 <- read_csv(str_c(epc_fp, "2015Q1.csv"))
 
 # Split the entries by '|' and ',', unnest, and extract unique values
@@ -86,8 +81,6 @@ unique_mainheat_descriptions <- epc_15q1 %>%
   mutate(mainheat_description = str_split(mainheat_description, " \\| ")) %>%
   unnest(mainheat_description) %>%
   distinct(mainheat_description)
-
-# select wood anthracite fuel coal
 
 epc_clean <- function(yr, q) {
   # file <- read_csv(str_c(epc_fp, "2024Q4.csv")) 
@@ -98,7 +91,9 @@ epc_clean <- function(yr, q) {
     select(osg_reference_number, postcode, mainheat_description, hotwater_description, number_open_fireplaces, main_fuel) %>%
     # Separate mainheat, hotwater columns where multiple heat sources are present 
     separate_rows(mainheat_description, sep = "\\|") %>%
-    separate_rows(hotwater_description, sep = "\\|") 
+    separate_rows(hotwater_description, sep = "\\|") %>%
+    filter(osg_reference_number != "OSG_UPRN") %>%
+    mutate(osg_reference_number = as.numeric(osg_reference_number))
     
   # Extract unique main heat descriptions from clean_file
   unique_clean_file_descriptions <- clean_file %>%
@@ -113,13 +108,13 @@ epc_clean <- function(yr, q) {
   }
     
   # Column for solid fuel
-  # select wood anthracite fuel coal
+  # Select strings containing wood anthracite fuel coal
   sfb <- clean_file %>%
     mutate(solid_fuel_flag = if_else(str_detect(mainheat_description, "wood|anthracite|fuel|coal"), TRUE, FALSE))
 }
 
-q <- c(1:4)
-yr <- c(2015:2024)
+# q <- c(1:4)
+# yr <- c(2015:2024)
 
 # Initialize an empty list to store results
 all_cleaned_files <- list()
@@ -135,3 +130,19 @@ for (year in 2015:2024) {
 # Combine all cleaned files into one data frame
 final_cleaned_file <- bind_rows(all_cleaned_files)
 
+# Save out file
+# write_csv(final_cleaned_file, str_c(wd, "/EPC/output/epc_clean_data_2015_2024.csv"))
+
+# UPRN code match ----
+# Read in UPRN code lookup
+
+uprn_read <- read_csv(str_c(uprn_fp, "NSUL_FEB_2025_SC.csv"))
+uprn_clean <- uprn_read %>%
+  select(UPRN, GRIDGB1E, GRIDGB1N, PCDS) %>%
+  rename_all(tolower)
+
+epc_uprn <- final_cleaned_file %>%
+  left_join(., uprn_clean, by = join_by(osg_reference_number == uprn))
+
+# Save out file
+# write_csv(epc_uprn, str_c(wd, "/EPC/output/epc_matchedUPRN_clean_data_2015_2024.csv"))
