@@ -74,19 +74,48 @@ epc_sfb <- epc_24q4 %>%
 
 epc_24q4 <- read_csv(str_c(epc_fp, "2024Q3.csv"))
 
+epc_15q1 <- read_csv(str_c(epc_fp, "2015Q1.csv"))
+unique(epc_15q1$MAINHEAT_DESCRIPTION)
+unique(epc_15q1$HOTWATER_DESCRIPTION)
+
+# Split the entries by '|' and ',', unnest, and extract unique values
+unique_mainheat_descriptions <- epc_15q1 %>%
+  mutate(MAINHEAT_DESCRIPTION = str_split(MAINHEAT_DESCRIPTION, " \\| ")) %>%
+  # mutate(MAINHEAT_DESCRIPTION = str_split(MAINHEAT_DESCRIPTION, " \\| |, ")) %>% # commas and |
+  unnest(MAINHEAT_DESCRIPTION) %>%
+  distinct(MAINHEAT_DESCRIPTION)
+
+
+# select wood anthracite fuel coal
+
 epc_clean <- function(yr, q) {
-  file <- read_csv(str_c(epc_fp, "2024Q4.csv")) 
+  # file <- read_csv(str_c(epc_fp, "2024Q4.csv")) 
+  file <- read_csv(str_c(epc_fp, str_c(yr, "Q", q, ".csv")))
   
   clean_file <- file %>%
-    select(OSG_REFERENCE_NUMBER, POSTCODE, MAINHEAT_DESCRIPTION, HOTWATER_DESCRIPTION, NUMBER_OPEN_FIREPLACES, MAIN_FUEL) %>%
-    # Separate mainheat, hotwaters columns where multiple heat sources are present - commas and |
-    mutate(MAINHEAT_DESCRIPTION = str_replace_all(MAINHEAT_DESCRIPTION, "\\|", ",")) %>%
-    separate_rows(MAINHEAT_DESCRIPTION, sep = ",\\s*") %>%
-    mutate(HOTWATER_DESCRIPTION = str_replace_all(HOTWATER_DESCRIPTION, "\\|", ",")) %>%
-    separate_rows(HOTWATER_DESCRIPTION, sep = ",\\s*")
+    rename_all(tolower) %>%
+    select(osg_reference_number, postcode, mainheat_description, hotwater_description, number_open_fireplaces, main_fuel) %>%
+    # Separate mainheat, hotwater columns where multiple heat sources are present 
+    separate_rows(mainheat_description, sep = "\\|") %>%
+    separate_rows(hotwater_description, sep = "\\|") 
+    # Check for new unique main heat descriptions
   
-
+  # Extract unique main heat descriptions from clean_file
+  unique_clean_file_descriptions <- clean_file %>%
+    distinct(mainheat_description) %>%
+    pull(mainheat_description)
   
+  # Check for new unique main heat descriptions
+  new_descriptions <- setdiff(unique_clean_file_descriptions, unique_mainheat_descriptions$mainheat_description)
+  
+  if (length(new_descriptions) > 0) {
+    message("New unique main heat descriptions not present in 2015 data: ", paste(new_descriptions, collapse = "; "))
+  }
+    
+  # Column for solid fuel
+  # select wood anthracite fuel coal
+  sfb <- clean_file %>%
+    mutate(solid_fuel_flag = if_else(str_detect(mainheat_description, "wood|anthracite|fuel|coal"), TRUE, FALSE))
 }
 
 q <- c(1:4)
