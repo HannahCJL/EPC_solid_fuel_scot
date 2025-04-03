@@ -86,16 +86,21 @@ unique_mainheat_descriptions <- epc_15q1 %>%
 
 epc_clean <- function(yr, q) {
   # file <- read_csv(str_c(epc_fp, "2024Q4.csv")) 
+  print(str_c(yr, "Q", q, ".csv"))
   file <- read_csv(str_c(epc_fp, str_c(yr, "Q", q, ".csv")))
   
   clean_file <- file %>%
     rename_all(tolower) %>%
-    select(osg_reference_number, postcode, mainheat_description, hotwater_description, number_open_fireplaces, main_fuel) %>%
+    select(osg_reference_number, address1, postcode, # CP added address1
+           mainheat_description, hotwater_description, number_open_fireplaces, main_fuel) %>%
     # Separate mainheat, hotwater columns where multiple heat sources are present 
     separate_rows(mainheat_description, sep = "\\|") %>%
     separate_rows(hotwater_description, sep = "\\|") %>%
     filter(osg_reference_number != "OSG_UPRN"| is.na(osg_reference_number)) %>% # this bit removed NAs, so
     mutate(osg_reference_number = as.numeric(osg_reference_number))
+  
+  
+  # TODO: add in bit for secondary fuel sources
     
   # Extract unique main heat descriptions from clean_file
   unique_clean_file_descriptions <- clean_file %>%
@@ -113,6 +118,12 @@ epc_clean <- function(yr, q) {
   # Select strings containing wood anthracite fuel coal
   sfb <- clean_file %>%
     mutate(solid_fuel_flag = if_else(str_detect(mainheat_description, "wood|anthracite|fuel|coal"), TRUE, FALSE))
+  
+  
+  # add columns for which Q yr it came from
+  sfb <- sfb %>%
+    mutate(data_year = yr) %>% 
+    mutate(data_q = q)
 }
 
 # q <- c(1:4)
@@ -166,6 +177,9 @@ epc_uprn_pc <- epc_uprn %>%
 epc_uprn_pc[duplicated(osg_reference_number) | duplicated(osg_reference_number, fromLast = TRUE)]
 # for UPRN the above is fine, were uprn is not available, use addresses?
 # what about buildings with no uprn number?
+test <- epc_uprn_pc %>%  as.data.table %>% 
+  .[duplicated(address1) | duplicated(address1, fromLast = TRUE)]
+
 
 # Save out file
 # write_csv(epc_uprn, str_c(wd, "/EPC/output/epc_matchedUPRN_clean_data_2015_2024.csv"))
