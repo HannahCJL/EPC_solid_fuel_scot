@@ -146,7 +146,7 @@ uprn_clean <- uprn_read %>%
   rename_all(tolower)
 
 epc_uprn <- final_cleaned_file %>%
-  left_join(., uprn_clean, by = join_by(osg_reference_number == uprn))
+  left_join(., uprn_clean, by = join_by(osg_reference_number == uprn),keep=T)
 
 # Postcode match ----
 # Read in Postcode lookup shpaefile
@@ -154,10 +154,39 @@ v_pc <- vect(paste0(wd,"GeographicalUnits/pc_cut_25_1/PC_Cut_25_1.shp"))
 v_pc_centr <- centroids(v_pc)
 v_pc_centr <- cbind(v_pc_centr, geom(v_pc_centr)[, c("x", "y")]) %>% as.data.frame
 rm(v_pc)
-
+# might result in multiple houses ontop of eachother of mulitple
+# buildings in the same postcode and all given the centroid coords
 epc_uprn_pc <- epc_uprn %>%
-  left_join(., v_pc_centr[,c('Postcode', 'x', 'y')], by = join_by(postcode == Postcode))
+  left_join(., v_pc_centr[,c('Postcode', 'x', 'y')],
+            by = join_by(postcode == Postcode),keep=T)
 
+
+## check for duplicates
+# maybe look at addresses? 
+epc_uprn_pc[duplicated(osg_reference_number) | duplicated(osg_reference_number, fromLast = TRUE)]
+# for UPRN the above is fine, were uprn is not available, use addresses?
+# what about buildings with no uprn number?
 
 # Save out file
 # write_csv(epc_uprn, str_c(wd, "/EPC/output/epc_matchedUPRN_clean_data_2015_2024.csv"))
+write_csv(epc_uprn_pc, str_c(wd, "/EPC/output/epc_matchedUPRNPC_clean_data_2015_2024.csv"))
+epc_uprn_pc <- read.csv(str_c(wd, "/EPC/output/epc_matchedUPRNPC_clean_data_2015_2024.csv"))
+
+
+
+
+
+require(data.table)
+epc_uprn_pc <- epc_uprn_pc %>% as.data.table %>% 
+  .[, c('x_used', 'y_used') := .(gridgb1e, gridgb1n)]
+epc_uprn_pc[, c('x_used', 'y_used') := .(ifelse(is.na(gridgb1e), x ,gridgb1e),
+                                         ifelse(is.na(gridgb1n), y ,gridgb1n))]
+require(terra)
+v <- vect(epc_uprn_pc, geom=c('x_used', 'y_used'))
+
+v[v$solid_fuel_flag ==TRUE,]
+writeVector(v[v$solid_fuel_flag ==TRUE,], paste0(wd,"/EPC/output/EPC_SF_2015_2024.shp"))
+
+
+
+# epc_uprn_pc[is.na(gridgb1e),] # check
