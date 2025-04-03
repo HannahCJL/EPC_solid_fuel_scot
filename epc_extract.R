@@ -4,10 +4,11 @@
 # 1/4/25
 
 # File paths ----
+setwd("P:/08092_ScotGov_AirQuality/Data/D1_2_PM_WorkDayTask1/")
+wd <- "./ImprovingSpatialDomesticSF/Data/"
+uprn_fp <- "./DomesticBurningStats/UPRN Data/Data/"
+epc_fp <- "./DomesticBurningStats/D_EPC_data_2015Q1-2024Q4/"
 
-uprn_fp <- "P:/08092_ScotGov_AirQuality/Data/D1_2_PM_WorkDayTask1/DomesticBurningStats/UPRN Data/Data/"
-epc_fp <- "P:/08092_ScotGov_AirQuality/Data/D1_2_PM_WorkDayTask1/DomesticBurningStats/D_EPC_data_2015Q1-2024Q4/"
-wd <- "P:/08092_ScotGov_AirQuality/Data/D1_2_PM_WorkDayTask1/ImprovingSpatialDomesticSF/Data"
 
 # Packages ----
 
@@ -45,18 +46,19 @@ unique_mainheat_descriptions <- epc_mh %>%
   distinct(MAINHEAT_DESCRIPTION)
 
 # solid fuel sources
-sfb_heat <- c("coal", "wood logs", "smokeless fuel", "wood chips",  "wood pellets", "dual fuel (mineral and wood)", "anthracite")
+sfb_heat <- c("coal", "wood logs", "smokeless fuel", "wood chips",
+              "wood pellets", "dual fuel (mineral and wood)", "anthracite")
 sfb_hw <- c("Solid fuel boiler/circulator",
                   "Solid fuel range cooker")
 
 epc_w <- epc_24q4 %>%
   select(OSG_REFERENCE_NUMBER, POSTCODE, MAINHEAT_DESCRIPTION, HOTWATER_DESCRIPTION, NUMBER_OPEN_FIREPLACES, MAIN_FUEL) %>%
-  filter(str_detect(HOTWATER_DESCRIPTION, paste(sfb_w, collapse = "|")))
+  filter(str_detect(HOTWATER_DESCRIPTION, paste(sfb_hw, collapse = "|")))
 
 epc_sfb <- epc_24q4 %>%
   select(OSG_REFERENCE_NUMBER, POSTCODE, MAINHEAT_DESCRIPTION, HOTWATER_DESCRIPTION, NUMBER_OPEN_FIREPLACES, MAIN_FUEL) %>%
   filter(str_detect(MAINHEAT_DESCRIPTION, paste(sfb_heat, collapse = "|"))
-         | str_detect(HOTWATER_DESCRIPTION, paste(sfb_w, collapse = "|"))) 
+         | str_detect(HOTWATER_DESCRIPTION, paste(sfb_hw, collapse = "|"))) 
 
 
 # might need to have a think about removing commas - jsut use str_detect and select if any use that
@@ -92,7 +94,7 @@ epc_clean <- function(yr, q) {
     # Separate mainheat, hotwater columns where multiple heat sources are present 
     separate_rows(mainheat_description, sep = "\\|") %>%
     separate_rows(hotwater_description, sep = "\\|") %>%
-    filter(osg_reference_number != "OSG_UPRN") %>%
+    filter(osg_reference_number != "OSG_UPRN"| is.na(osg_reference_number)) %>% # this bit removed NAs, so
     mutate(osg_reference_number = as.numeric(osg_reference_number))
     
   # Extract unique main heat descriptions from clean_file
@@ -127,11 +129,13 @@ for (year in 2015:2024) {
   }
 }
 
+
 # Combine all cleaned files into one data frame
 final_cleaned_file <- bind_rows(all_cleaned_files)
 
 # Save out file
 # write_csv(final_cleaned_file, str_c(wd, "/EPC/output/epc_clean_data_2015_2024.csv"))
+final_cleaned_file <- read.csv(str_c(wd, "/EPC/output/epc_clean_data_2015_2024.csv"))
 
 # UPRN code match ----
 # Read in UPRN code lookup
@@ -143,6 +147,17 @@ uprn_clean <- uprn_read %>%
 
 epc_uprn <- final_cleaned_file %>%
   left_join(., uprn_clean, by = join_by(osg_reference_number == uprn))
+
+# Postcode match ----
+# Read in Postcode lookup shpaefile
+v_pc <- vect(paste0(wd,"GeographicalUnits/pc_cut_25_1/PC_Cut_25_1.shp"))
+v_pc_centr <- centroids(v_pc)
+v_pc_centr <- cbind(v_pc_centr, geom(v_pc_centr)[, c("x", "y")]) %>% as.data.frame
+rm(v_pc)
+
+epc_uprn_pc <- epc_uprn %>%
+  left_join(., v_pc_centr[,c('Postcode', 'x', 'y')], by = join_by(postcode == Postcode))
+
 
 # Save out file
 # write_csv(epc_uprn, str_c(wd, "/EPC/output/epc_matchedUPRN_clean_data_2015_2024.csv"))
