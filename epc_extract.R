@@ -146,3 +146,9 @@ epc_uprn <- final_cleaned_file %>%
 
 # Save out file
 # write_csv(epc_uprn, str_c(wd, "/EPC/output/epc_matchedUPRN_clean_data_2015_2024.csv"))
+
+# Data manipulation ----
+
+pc_match <- epc_uprn %>%
+  filter(postcode != pcds) %>%
+  select(-(3:7))
