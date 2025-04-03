@@ -169,7 +169,7 @@ pc_match <- epc_uprn %>%
 
 
 # plot
-shp <- st_as_sf(dt, coords=c("GRIDGB1E","GRIDGB1N"))
+shp <- st_as_sf(epc_uprn_pc, coords=c("GRIDGB1E","GRIDGB1N"))
 st_crs(shp)<- 27700
 shp <- st_transform(shp,4326)
-write_sf(shp,"N:/14. ScotGov/HouseAge_Fuel.shp")
+write_sf(shp, str_c(wd, "/EPC/output/shp_epc_clean_data_2015_2024.shp"))
