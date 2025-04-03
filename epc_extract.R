@@ -12,7 +12,7 @@ epc_fp <- "./DomesticBurningStats/D_EPC_data_2015Q1-2024Q4/"
 
 # Packages ----
 
-pacman::p_load("dplyr","stringr","ggplot2","readr","DT","tidyr")
+pacman::p_load("dplyr","stringr","ggplot2","readr","DT","tidyr","sf","terra")
 
 
 # Exploratory analysis  ----
@@ -85,7 +85,7 @@ unique_mainheat_descriptions <- epc_15q1 %>%
   distinct(mainheat_description)
 
 epc_clean <- function(yr, q) {
-  # file <- read_csv(str_c(epc_fp, "2024Q4.csv")) 
+  file <- read_csv(str_c(epc_fp, "2024Q4.csv"))
   file <- read_csv(str_c(epc_fp, str_c(yr, "Q", q, ".csv")))
   
   clean_file <- file %>%
@@ -129,7 +129,6 @@ for (year in 2015:2024) {
   }
 }
 
-
 # Combine all cleaned files into one data frame
 final_cleaned_file <- bind_rows(all_cleaned_files)
 
@@ -149,8 +148,10 @@ epc_uprn <- final_cleaned_file %>%
   left_join(., uprn_clean, by = join_by(osg_reference_number == uprn))
 
 # Postcode match ----
+# For rows where UPRN code is missing?
 # Read in Postcode lookup shpaefile
 v_pc <- vect(paste0(wd,"GeographicalUnits/pc_cut_25_1/PC_Cut_25_1.shp"))
+# Centre point of postcode areas
 v_pc_centr <- centroids(v_pc)
 v_pc_centr <- cbind(v_pc_centr, geom(v_pc_centr)[, c("x", "y")]) %>% as.data.frame
 rm(v_pc)
@@ -158,12 +159,17 @@ rm(v_pc)
 epc_uprn_pc <- epc_uprn %>%
   left_join(., v_pc_centr[,c('Postcode', 'x', 'y')], by = join_by(postcode == Postcode))
 
-
 # Save out file
 # write_csv(epc_uprn, str_c(wd, "/EPC/output/epc_matchedUPRN_clean_data_2015_2024.csv"))
 
 # Data manipulation ----
-
 pc_match <- epc_uprn %>%
   filter(postcode != pcds) %>%
   select(-(3:7))
+
+
+# plot
+shp <- st_as_sf(dt, coords=c("GRIDGB1E","GRIDGB1N"))
+st_crs(shp)<- 27700
+shp <- st_transform(shp,4326)
+write_sf(shp,"N:/14. ScotGov/HouseAge_Fuel.shp")
