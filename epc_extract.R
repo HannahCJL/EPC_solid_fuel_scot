@@ -85,17 +85,23 @@ unique_mainheat_descriptions <- epc_15q1 %>%
   distinct(mainheat_description)
 
 epc_clean <- function(yr, q) {
-  file <- read_csv(str_c(epc_fp, "2024Q4.csv"))
+
+  # file <- read_csv(str_c(epc_fp, "2024Q4.csv")) 
+  print(str_c(yr, "Q", q, ".csv"))
   file <- read_csv(str_c(epc_fp, str_c(yr, "Q", q, ".csv")))
   
   clean_file <- file %>%
     rename_all(tolower) %>%
-    select(osg_reference_number, postcode, mainheat_description, hotwater_description, number_open_fireplaces, main_fuel) %>%
+    select(osg_reference_number, address1, postcode, # CP added address1
+           mainheat_description, hotwater_description, number_open_fireplaces, main_fuel) %>%
     # Separate mainheat, hotwater columns where multiple heat sources are present 
     separate_rows(mainheat_description, sep = "\\|") %>%
     separate_rows(hotwater_description, sep = "\\|") %>%
     filter(osg_reference_number != "OSG_UPRN"| is.na(osg_reference_number)) %>% # this bit removed NAs, so
     mutate(osg_reference_number = as.numeric(osg_reference_number))
+  
+  
+  # TODO: add in bit for secondary fuel sources
     
   # Extract unique main heat descriptions from clean_file
   unique_clean_file_descriptions <- clean_file %>%
@@ -113,6 +119,12 @@ epc_clean <- function(yr, q) {
   # Select strings containing wood anthracite fuel coal
   sfb <- clean_file %>%
     mutate(solid_fuel_flag = if_else(str_detect(mainheat_description, "wood|anthracite|fuel|coal"), TRUE, FALSE))
+  
+  
+  # add columns for which Q yr it came from
+  sfb <- sfb %>%
+    mutate(data_year = yr) %>% 
+    mutate(data_q = q)
 }
 
 # q <- c(1:4)
@@ -145,7 +157,7 @@ uprn_clean <- uprn_read %>%
   rename_all(tolower)
 
 epc_uprn <- final_cleaned_file %>%
-  left_join(., uprn_clean, by = join_by(osg_reference_number == uprn))
+  left_join(., uprn_clean, by = join_by(osg_reference_number == uprn),keep=T)
 
 # Postcode match ----
 # For rows where UPRN code is missing?
@@ -155,12 +167,45 @@ v_pc <- vect(paste0(wd,"GeographicalUnits/pc_cut_25_1/PC_Cut_25_1.shp"))
 v_pc_centr <- centroids(v_pc)
 v_pc_centr <- cbind(v_pc_centr, geom(v_pc_centr)[, c("x", "y")]) %>% as.data.frame
 rm(v_pc)
-
+# might result in multiple houses ontop of eachother of mulitple
+# buildings in the same postcode and all given the centroid coords
 epc_uprn_pc <- epc_uprn %>%
-  left_join(., v_pc_centr[,c('Postcode', 'x', 'y')], by = join_by(postcode == Postcode))
+  left_join(., v_pc_centr[,c('Postcode', 'x', 'y')],
+            by = join_by(postcode == Postcode),keep=T)
+
+
+## check for duplicates
+# maybe look at addresses? 
+epc_uprn_pc[duplicated(osg_reference_number) | duplicated(osg_reference_number, fromLast = TRUE)]
+# for UPRN the above is fine, were uprn is not available, use addresses?
+# what about buildings with no uprn number?
+test <- epc_uprn_pc %>%  as.data.table %>% 
+  .[duplicated(address1) | duplicated(address1, fromLast = TRUE)]
 
 # Save out file
 # write_csv(epc_uprn, str_c(wd, "/EPC/output/epc_matchedUPRN_clean_data_2015_2024.csv"))
+
+write_csv(epc_uprn_pc, str_c(wd, "/EPC/output/epc_matchedUPRNPC_clean_data_2015_2024.csv"))
+epc_uprn_pc <- read.csv(str_c(wd, "/EPC/output/epc_matchedUPRNPC_clean_data_2015_2024.csv"))
+
+
+
+
+
+require(data.table)
+epc_uprn_pc <- epc_uprn_pc %>% as.data.table %>% 
+  .[, c('x_used', 'y_used') := .(gridgb1e, gridgb1n)]
+epc_uprn_pc[, c('x_used', 'y_used') := .(ifelse(is.na(gridgb1e), x ,gridgb1e),
+                                         ifelse(is.na(gridgb1n), y ,gridgb1n))]
+require(terra)
+v <- vect(epc_uprn_pc, geom=c('x_used', 'y_used'))
+
+v[v$solid_fuel_flag ==TRUE,]
+writeVector(v[v$solid_fuel_flag ==TRUE,], paste0(wd,"/EPC/output/EPC_SF_2015_2024.shp"))
+
+
+
+# epc_uprn_pc[is.na(gridgb1e),] # check
 
 # Data manipulation ----
 pc_match <- epc_uprn %>%
