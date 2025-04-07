@@ -9,11 +9,8 @@ wd <- "./ImprovingSpatialDomesticSF/Data/"
 uprn_fp <- "./DomesticBurningStats/UPRN Data/Data/"
 epc_fp <- "./DomesticBurningStats/D_EPC_data_2015Q1-2024Q4/"
 
-
 # Packages ----
-
 pacman::p_load("dplyr","stringr","ggplot2","readr","DT","tidyr","sf","terra")
-
 
 # Exploratory analysis  ----
 
@@ -92,12 +89,13 @@ epc_clean <- function(yr, q) {
   
   clean_file <- file %>%
     rename_all(tolower) %>%
-    select(osg_reference_number, address1, postcode, # CP added address1
-           mainheat_description, hotwater_description, number_open_fireplaces, main_fuel) %>%
+    select(osg_reference_number, address1, postcode, mainheat_description, 
+           hotwater_description, number_open_fireplaces, main_fuel) %>%
     # Separate mainheat, hotwater columns where multiple heat sources are present 
     separate_rows(mainheat_description, sep = "\\|") %>%
     separate_rows(hotwater_description, sep = "\\|") %>%
-    filter(osg_reference_number != "OSG_UPRN"| is.na(osg_reference_number)) %>% # this bit removed NAs, so
+    # this bit removed NAs, so
+    filter(osg_reference_number != "OSG_UPRN"| is.na(osg_reference_number)) %>% 
     mutate(osg_reference_number = as.numeric(osg_reference_number))
   
   
@@ -109,16 +107,20 @@ epc_clean <- function(yr, q) {
     pull(mainheat_description)
   
   # Check for new unique main heat descriptions
-  new_descriptions <- setdiff(unique_clean_file_descriptions, unique_mainheat_descriptions$mainheat_description)
+  new_descriptions <- setdiff(unique_clean_file_descriptions, 
+                              unique_mainheat_descriptions$mainheat_description)
   
   if (length(new_descriptions) > 0) {
-    message("New unique main heat descriptions not present in 2015 data: ", paste(new_descriptions, collapse = "; "))
+    message("New unique main heat descriptions not present in 2015 data: ", 
+            paste(new_descriptions, collapse = "; "))
   }
     
   # Column for solid fuel
   # Select strings containing wood anthracite fuel coal
   sfb <- clean_file %>%
-    mutate(solid_fuel_flag = if_else(str_detect(mainheat_description, "wood|anthracite|fuel|coal"), TRUE, FALSE))
+    mutate(solid_fuel_flag = if_else(
+      str_detect(mainheat_description, "wood|anthracite|fuel|coal"), TRUE, 
+      FALSE))
   
   
   # add columns for which Q yr it came from
@@ -173,7 +175,6 @@ epc_uprn_pc <- epc_uprn %>%
   left_join(., v_pc_centr[,c('Postcode', 'x', 'y')],
             by = join_by(postcode == Postcode),keep=T)
 
-
 ## check for duplicates
 # maybe look at addresses? 
 epc_uprn_pc[duplicated(osg_reference_number) | duplicated(osg_reference_number, fromLast = TRUE)]
@@ -185,10 +186,8 @@ test <- epc_uprn_pc %>%  as.data.table %>%
 # Save out file
 # write_csv(epc_uprn, str_c(wd, "/EPC/output/epc_matchedUPRN_clean_data_2015_2024.csv"))
 
-write_csv(epc_uprn_pc, str_c(wd, "/EPC/output/epc_matchedUPRNPC_clean_data_2015_2024.csv"))
+# write_csv(epc_uprn_pc, str_c(wd, "/EPC/output/epc_matchedUPRNPC_clean_data_2015_2024.csv"))
 epc_uprn_pc <- read.csv(str_c(wd, "/EPC/output/epc_matchedUPRNPC_clean_data_2015_2024.csv"))
-
-
 
 
 
@@ -207,14 +206,33 @@ writeVector(v[v$solid_fuel_flag ==TRUE,], paste0(wd,"/EPC/output/EPC_SF_2015_202
 
 # epc_uprn_pc[is.na(gridgb1e),] # check
 
+# remove duplicates - select more recent year
+epc_uprn_pc <- epc_uprn_pc %>%
+  filter(data_year = max(data_year),
+         data_q = max(data_q))
+
+
 # Data manipulation ----
 pc_match <- epc_uprn %>%
   filter(postcode != pcds) %>%
   select(-(3:7))
 
-
 # plot
-shp <- st_as_sf(epc_uprn_pc, coords=c("GRIDGB1E","GRIDGB1N"))
+shp <- st_as_sf(epc_uprn_pc, coords=c("gridgb1e","gridgb1n"))
 st_crs(shp)<- 27700
 shp <- st_transform(shp,4326)
 write_sf(shp, str_c(wd, "/EPC/output/shp_epc_clean_data_2015_2024.shp"))
+
+# Represent spatially
+# raster or vector - raster?
+
+epc_uprn_pc <- st_as_sf(epc_uprn_pc, coords = c("x_used", "y_used"), crs = 4326)
+
+map <- epc_uprn_pc %>%
+  ggplot() +
+  # geom_sf(data = uk_border) +
+  geom_sf(aes(color = solid_fuel_flag), size = 3) +
+  labs(title = "Solid Fuel Flag in Scotland",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_minimal()
